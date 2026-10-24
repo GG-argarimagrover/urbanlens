@@ -1,0 +1,5 @@
+# only for fetch_landsat.py (optional, run locally / in Colab)
+pystac-client
+planetary-computer
+stackstac
+rioxarray

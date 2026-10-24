@@ -1,0 +1,12 @@
+streamlit>=1.50
+numpy
+pandas
+geopandas>=1.0
+shapely>=2.0
+networkx
+scipy
+scikit-learn
+rasterio
+folium
+osmnx>=2.0
+anthropic
