@@ -9,4 +9,5 @@ scikit-learn
 rasterio
 folium
 osmnx>=2.0
+openpyxl
 anthropic

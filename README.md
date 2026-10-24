@@ -1,37 +1,46 @@
-# UrbanLens - understand any city
+# UrbanLens
 
-Live Streamlit app: type a city (or a bounding box), optionally upload your own data, get walkability, heat/climate
-vulnerability, junction safety & comfort, public-transport connectivity, green-space access, neighbourhood equity,
-AI-generated neighbourhood types and evidence-linked recommendations - with an interactive dashboard.
+GIS + Python + remote sensing + AI → evidence-based urban recommendations and interactive maps.
 
-## Deploy (free) - same flow as any Streamlit app
-1. Create a GitHub repository and upload **all files in this folder** (keep `.streamlit/` and `requirements.txt`).
-2. Go to https://share.streamlit.io -> **Create app** -> pick the repo, branch `main`, main file path `app.py` -> **Deploy**.
-3. First build takes a few minutes (geospatial libraries). Your app gets a URL like `https://<name>.streamlit.app`.
-
-Optional: for the AI-written planning brief, add `ANTHROPIC_API_KEY = "..."` under app **Settings -> Secrets**.
-
-## Run locally
-```
+```bash
 pip install -r requirements.txt
-streamlit run app.py
+python urbanlens.py demo --out out_demo                     # offline, synthetic city (verified)
+python urbanlens.py osm "Place, Country" --out out_place    # real OSM data (needs internet)
+python urbanlens.py osm "Place" --socio zones.gpkg --ndvi ndvi.tif --lst lst.tif --llm
 ```
+Outputs: `dashboard.html` (self-contained interactive dashboard; rebuild any time with `python dashboard.py out_dir`), `map.html`, `report.html`, `cells.geojson`, `junctions.geojson`, `recommendations.csv`, `equity.csv`, `summary.json`.
 
-## Data
-Always from OpenStreetMap (automatic): streets, junctions, crossings, bus/tram/rail stops, shops & services, parks, buildings, trees.
-Optional uploads (sidebar):
-| Upload | Format | Required content |
-|---|---|---|
-| Ward / zone polygons | .gpkg, .geojson or zipped shapefile | columns `population`, `deprivation` (0-1, higher = worse); optional `elderly_share` (0-1) |
-| Population raster | GeoTIFF | persons per pixel (e.g. WorldPop) |
-| NDVI raster | GeoTIFF, 1 band | vegetation index -1..1 |
-| Land-surface temperature | GeoTIFF, 1 band | e.g. Landsat 8/9 ST in deg C (`fetch_landsat.py` builds NDVI+LST) |
-Files may have different resolutions/CRS - everything is resampled onto the analysis grid. No QGIS merging needed.
+## What it measures (all scores 0-100, higher = better)
+| Module | Method |
+|---|---|
+| Walkability | 500 m intersection density, **network pedshed ratio** (800 m), distinct everyday destination types within 10-min walk |
+| Junction safety | Per-junction screening risk: pedestrian severe-injury curve vs speed × road width × legs × crossing/sidewalk mitigation; aggregated to cells |
+| Pedestrian comfort | Footway coverage, low-speed share, arterial exposure, shade (vegetation) |
+| Public transport | PTAL-inspired index: walk time + wait time → equivalent doorstep frequency, by mode |
+| Green access | Network distance to ≥0.5 ha green space (3-30-300 rule), vegetation cover, park m² per person |
+| Heat / climate | IPCC-style exposure (LST, imperviousness, vegetation) + sensitivity (deprivation, elderly, density) − adaptive capacity |
+| Equity | Population-weighted quintile gaps and **concentration index** per indicator; need × deficit priority index |
 
-## Limits & honesty
-- Free hosting has limited memory/time: areas are capped (~600 km2) and the grid is auto-coarsened (<= 3000 cells). Use a bounding box for big cities.
-- OpenStreetMap completeness varies; the **Data quality** tab flags thin layers. Transit frequencies from OSM are placeholders (no GTFS yet).
-- Equity results need deprivation data - without it the app says so and the numbers are not meaningful.
-- Junction risk is a screening heuristic, not a crash model. Slope/terrain is not modelled.
-- Tested: demo city, a mocked OpenStreetMap download (graph/tags/speeds/crossings/stops/parks), ward + raster uploads, bad input, and headless app runs.
-  **Not yet tested against the live OpenStreetMap servers or on Streamlit Community Cloud itself** - expect to debug first deploy.
+## AI layer
+1. **Typology discovery** – k-means on indicators, auto-labelled ("weak walkability, weak green access").
+2. **Recommendation engine** – priority cells → connected priority zones → 10 intervention rules triggered by zone metrics; every recommendation lists the numbers behind it, evidence rationale, cost class, horizon, and junction IDs.
+3. **Planning brief** – template by default; `--llm` (set `ANTHROPIC_API_KEY`) asks Claude to write it from the computed JSON only.
+
+## Inputs for real use
+- **Socio-economic zones** (`--socio`): polygons with `population`, `deprivation` (0-1, higher = worse), `elderly_share`. Without it equity results are flagged as meaningless.
+- **Remote sensing**: any NDVI / LST GeoTIFFs; `fetch_landsat.py` builds them from Landsat (untested here). Without them, land-cover proxies are used.
+- **Transit**: OSM stops get *placeholder* frequencies. Replace `trips_per_hr` from GTFS for real results.
+- **Crash data**: not yet wired in – the best next step for calibrating junction risk.
+
+## Honest limitations
+Tested end-to-end only on the synthetic city (incl. manual checks of network distances). The OSM loader and Landsat script were written against library docs but not run offline. Junction risk is a heuristic screen, not a crash model. Rule-based recommendations are decision support, not designs.
+
+## Real-city options
+`python urbanlens.py osm "Place" [--bbox W,S,E,N] [--pop worldpop.tif] [--socio zones.gpkg] [--ndvi f.tif --lst f.tif] [--cell 250]`
+`UrbanLens_Rishikesh.ipynb` is a ready-to-run Google Colab notebook. The OSM loader was verified offline against a generated OSM XML file (graph, speeds in mph/km/h, crossings, stops, parks, buildings) - but not yet against live Overpass servers.
+
+## Happy Streets (street-segment scoring)
+Streets are cut into 25-100 m segments scored on pedestrian infrastructure, traffic exposure, shade, lighting, vitality, stayability
+(open data) plus perceived safety and accessibility (**field audit only**). Every score is tagged audit / osm / remote / proxy / default.
+Outputs: Happy Streets Index map, corridor priorities, evidence-linked interventions, a before/after simulator (MODELLED, assumed effects),
+a pre-filled Excel audit sheet and a KoboToolbox form. See `FIELD_AUDIT_GUIDE.md`.

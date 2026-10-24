@@ -93,6 +93,7 @@ class CityData:
     lst_tif: str | None = None
     pop_tif: str | None = None            # e.g. WorldPop persons-per-pixel GeoTIFF
     provenance: dict = field(default_factory=dict)
+    furniture: gpd.GeoDataFrame | None = None   # points: kind in {bench, lamp}
 
 
 # ----------------------------------------------------------------------------------------
@@ -127,7 +128,8 @@ def synthetic_city(out_dir: str, seed: int = 7) -> CityData:
                 if b[0] >= n or b[1] >= n:
                     continue
                 art = (j in arterial_idx) if di == 1 else (i in arterial_idx)
-                G.add_edge(a, b, art=art)
+                G.add_edge(a, b, art=art,
+                           name=f"{'Arterial' if art else 'Street'} {'E-W' if di == 1 else 'N-S'} {j if di == 1 else i}")
     edges = list(G.edges(data=True))
     rng.shuffle(edges)
     for a, b, d in edges:  # thin periphery to create cul-de-sac / low-permeability fringe
@@ -144,6 +146,9 @@ def synthetic_city(out_dir: str, seed: int = 7) -> CityData:
         xm, ym = (xa + xb) / 2, (ya + yb) / 2
         dc = dcen(xm, ym)
         d["length"] = float(np.hypot(xa - xb, ya - yb))
+        d["lit"] = bool(rng.random() < (.92 if d["art"] else max(.15, .8 - .7 * dc)))
+        d["surface"] = "asphalt" if (d["art"] or dc < .6 or rng.random() < .5) else "unpaved"
+        d["speed_tagged"] = True
         if d["art"]:
             d.update(highway="primary" if (dc < .6) else "secondary", speed=50 if dc < .6 else 60,
                      lanes=int(rng.choice([2, 4], p=[.5, .5])), sidewalk=bool(rng.random() < .9))
@@ -232,6 +237,18 @@ def synthetic_city(out_dir: str, seed: int = 7) -> CityData:
         tp.append(Point(p).buffer(rng.uniform(4, 8), 6))
     canopy = gpd.GeoDataFrame(geometry=tp, crs=crs)
 
+    # --- street furniture: benches cluster near destinations/parks, lamps follow lit streets ----
+    bpts = []
+    for p in list(pts[rng.choice(len(pts), 160, replace=False)]) + [np.array([g.centroid.x, g.centroid.y]) for g in parks.geometry]:
+        bpts.append(Point(p + rng.normal(0, 12, 2)))
+    lpts = []
+    for a, b, d in G.edges(data=True):
+        if d.get("lit"):
+            A, B = nodes_xy[a], nodes_xy[b]
+            for t in np.linspace(0, 1, max(1, int(d["length"] / 45)), endpoint=False) + .1:
+                lpts.append(Point(A + (B - A) * t + rng.normal(0, 3, 2)))
+    furniture = gpd.GeoDataFrame({"kind": ["bench"] * len(bpts) + ["lamp"] * len(lpts)}, geometry=bpts + lpts, crs=crs)
+
     boundary = box(X0, Y0, X0 + W, Y0 + W)
 
     # --- socio-economic zones (500 m), to exercise areal interpolation -----------------------
@@ -276,7 +293,8 @@ def synthetic_city(out_dir: str, seed: int = 7) -> CityData:
     return CityData("Synthetic demo city (NOT a real place)", crs, G, pois, stops, crossings, parks, bld, canopy,
                     boundary, socio, paths["ndvi"], paths["lst"], None,
                     {"source": "synthetic generator (seeded)", "synthetic": True,
-                     "note": "Demo data. Patterns (e.g. deprived south-east) are baked in to show the workflow."})
+                     "note": "Demo data. Patterns (e.g. deprived south-east) are baked in to show the workflow."},
+                    furniture=furniture)
 
 
 # ----------------------------------------------------------------------------------------
@@ -322,9 +340,13 @@ def coverage_report(city: CityData) -> pd.DataFrame:
             ("Parks & green spaces", len(city.parks), 3, "Few green spaces mapped"),
             ("Buildings", len(city.buildings), 300, "Few buildings - population proxy & heat exposure weak"),
             ("Mapped trees", len(city.canopy), 50, "Tree data sparse - use NDVI raster for vegetation")]
-    sw = [d.get("sidewalk", False) for *_, d in G.edges(data=True) if d.get("highway") not in NONVEHICLE]
-    rows.append(("Roads with sidewalk tagged (%)", round(100 * float(np.mean(sw)), 1) if sw else 0, 15,
-                 "Sidewalks rarely tagged - comfort scores pessimistic"))
+    sw = [d.get("sidewalk") for *_, d in G.edges(data=True) if d.get("highway") not in NONVEHICLE]
+    known = sum(1 for v in sw if v is not None)
+    rows.append(("Roads with a sidewalk tag (%)", round(100 * known / len(sw), 1) if sw else 0, 15,
+                 "Sidewalks mostly untagged - infrastructure scores rest on an assumed default; field-audit them"))
+    ln = [d.get("lit") for *_, d in G.edges(data=True) if d.get("highway") not in NONVEHICLE]
+    rows.append(("Roads with a lighting tag (%)", round(100 * sum(1 for v in ln if v is not None) / len(ln), 1) if ln else 0, 10,
+                 "Lighting rarely tagged - lighting score uses lamp points or an assumed default"))
     df = pd.DataFrame(rows, columns=["Layer", "Found", "Min. for reliable", "If low"])
     df["Status"] = np.where(df["Found"] >= df["Min. for reliable"], "OK", "LOW")
     return df[["Layer", "Found", "Status", "If low"]]
@@ -335,6 +357,9 @@ def load_osm(place: str, socio_path: str | None = None, ndvi: str | None = None,
     import osmnx as ox
 
     ox.settings.use_cache = True
+    # osmnx drops most tags by default - ask for the ones the street-level scoring needs
+    extra = ["sidewalk", "sidewalk:both", "sidewalk:left", "sidewalk:right", "lit", "surface", "footway", "smoothness"]
+    ox.settings.useful_tags_way = list(dict.fromkeys(list(ox.settings.useful_tags_way) + extra))
     bb = tuple(float(v) for v in bbox.split(",")) if bbox else None   # west,south,east,north
     G0 = (ox.graph_from_bbox(bb, network_type="all", simplify=True) if bb
           else ox.graph_from_place(place, network_type="all", simplify=True))
@@ -350,10 +375,23 @@ def load_osm(place: str, socio_path: str | None = None, ndvi: str | None = None,
         if hw in NONVEHICLE:
             side = True
         else:
-            sw = str(d.get("sidewalk", "")).lower()
-            side = sw in ("both", "left", "right", "yes", "separate") or hw in ("living_street", "pedestrian")
+            sws = [str(_first(d.get(k, ""))).lower() for k in ("sidewalk", "sidewalk:both", "sidewalk:left", "sidewalk:right")]
+            if any(v in ("both", "left", "right", "yes", "separate") for v in sws) or hw in ("living_street", "pedestrian"):
+                side = True
+            elif any(v in ("no", "none") for v in sws):
+                side = False
+            else:
+                side = None                      # unknown - NOT the same as "no sidewalk"
+        lit_raw = str(_first(d.get("lit", ""))).lower()
+        lit = True if lit_raw in ("yes", "24/7", "automatic", "sunset-sunrise") else (False if lit_raw == "no" else None)
+        try:
+            wd = float(re.findall(r"[\d.]+", str(_first(d.get("width"))))[0])
+        except Exception:
+            wd = None
         attrs = dict(length=float(d["length"]), highway=hw, speed=_parse_speed(d.get("maxspeed"), hw),
-                     lanes=_parse_lanes(d.get("lanes"), hw), sidewalk=side, art=hw in ARTERIAL)
+                     lanes=_parse_lanes(d.get("lanes"), hw), sidewalk=side, art=hw in ARTERIAL,
+                     speed_tagged=d.get("maxspeed") is not None, name=str(_first(d.get("name")) or ""),
+                     lit=lit, surface=_first(d.get("surface")), width=wd, geometry=d.get("geometry"))
         if G.has_edge(u, v) and G.edges[u, v]["length"] <= attrs["length"]:
             continue
         G.add_edge(u, v, **attrs)
@@ -410,6 +448,14 @@ def load_osm(place: str, socio_path: str | None = None, ndvi: str | None = None,
                 "natural": ["wood"]})
     pk = pk[pk.geom_type.isin(["Polygon", "MultiPolygon"])][["geometry"]].reset_index(drop=True)
     pk["name"] = [f"Green space {i+1}" for i in range(len(pk))]
+    fu = feats({"amenity": ["bench"], "highway": ["street_lamp"]})
+    if len(fu):
+        fu = fu.copy()
+        fu["geometry"] = fu.geometry.representative_point()
+        hwy = fu.get("highway", pd.Series(index=fu.index, dtype=object))
+        furniture = gpd.GeoDataFrame({"kind": np.where(hwy.eq("street_lamp"), "lamp", "bench")}, geometry=fu.geometry.values, crs=crs)
+    else:
+        furniture = gpd.GeoDataFrame({"kind": []}, geometry=[], crs=crs)
     b = feats({"building": True})
     b = b[b.geom_type.isin(["Polygon", "MultiPolygon"])][["geometry"]].reset_index(drop=True)
     trees = feats({"natural": ["tree", "tree_row"]})
@@ -425,7 +471,8 @@ def load_osm(place: str, socio_path: str | None = None, ndvi: str | None = None,
     return CityData(place, crs, G, pois, stops, crossings, pk, b, canopy, boundary, socio, ndvi, lst, pop,
                     {"source": "OpenStreetMap via osmnx", "synthetic": False,
                      "note": "Transit frequencies are placeholders unless GTFS is integrated; "
-                             "population is a building-area proxy unless --socio is supplied."})
+                             "population is a building-area proxy unless --socio is supplied."},
+                    furniture=furniture)
 
 
 # ----------------------------------------------------------------------------------------
