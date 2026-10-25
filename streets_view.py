@@ -32,7 +32,6 @@ TEMPLATE = r"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
 :root{--teal:#164E50;--forest:#527A62;--mist:#F3F5F2;--sand:#E8C68A;--saffron:#E87545;--bg:#F3F5F2;--panel:#fff;--fg:#17211f;--mut:#5d6b66;--line:#dfe4e0;--chip:#e6ebe7}
-@media (prefers-color-scheme:dark){:root{--bg:#10201f;--panel:#182b2a;--fg:#e9efec;--mut:#9fb2ab;--line:#2b4543;--chip:#223a38}}
 *{box-sizing:border-box}body{margin:0;font:14px/1.45 Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg)}
 header{background:var(--teal);color:#fff;padding:10px 14px}header h1{margin:0;font-size:17px}header div{font-size:12px;opacity:.85}
 .note{background:var(--sand);color:#3a2d10;padding:6px 12px;font-size:12px}

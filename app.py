@@ -15,9 +15,11 @@ import numpy as np
 import audit as au
 import segments as sg
 import streets_view as sv
+import theme
 import urbanlens as u
 
-st.set_page_config(page_title="UrbanLens - city analytics", page_icon="🏙️", layout="wide")
+st.set_page_config(page_title="UrbanLens · Living Ganga", page_icon="🏔️", layout="wide")
+st.markdown(theme.css(), unsafe_allow_html=True)
 
 MAX_CELLS = 3000          # keeps free-tier hosting responsive
 MAX_AREA_KM2 = 600        # refuse huge boundaries unless a bbox is given
@@ -58,8 +60,8 @@ def load_city_cached(place, bbox, socio, pop, ndvi, lst):
 
 
 # ------------------------------------------------------------------ sidebar
-st.sidebar.title("🏙️ UrbanLens")
-st.sidebar.caption("Walkability · Heat · Junction safety · Transit · Green space · Equity")
+st.sidebar.markdown("### 🏔️ UrbanLens")
+st.sidebar.caption("Living Ganga · urban intelligence for any city")
 mode = st.sidebar.radio("Data source", ["Any city (OpenStreetMap)", "Demo (synthetic city)"],
                         help="The demo needs no internet and shows how the app works.")
 place = bbox = ""
@@ -158,7 +160,7 @@ if run_clicked:
 # ------------------------------------------------------------------ results
 R = st.session_state.get("result")
 if not R:
-    st.title("UrbanLens - understand any city")
+    st.markdown(theme.banner_html("Understand any city, street by street"), unsafe_allow_html=True)
     st.markdown("""
 Type a city or town in the sidebar and press **Analyse**. The app downloads open map data and measures:
 
@@ -170,10 +172,11 @@ Type a city or town in the sidebar and press **Analyse**. The app downloads open
 
 …then finds priority zones and suggests evidence-linked actions. New here? Try the **Demo** first.
 """)
+    st.markdown(theme.footer_html(), unsafe_allow_html=True)
     st.stop()
 
 S = R["summary"]
-st.title(S["city"])
+st.markdown(theme.banner_html(S["city"], "Urban intelligence report · scores 0-100, higher is better", compact=True), unsafe_allow_html=True)
 prov = S["provenance"].get("socio", "")
 if S["provenance"].get("synthetic"):
     st.warning("Synthetic demonstration data - shows how the app works, not a real place.")
@@ -333,3 +336,5 @@ with t5:
 - **AI layer:** k-means neighbourhood typologies + rule-based recommendation engine (every action cites the metrics behind it).
 
 Hills/slope are not modelled. Treat results as screening, then verify on the ground.""")
+
+st.markdown(theme.footer_html(), unsafe_allow_html=True)

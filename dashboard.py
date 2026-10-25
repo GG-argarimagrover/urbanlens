@@ -75,14 +75,13 @@ TEMPLATE = r"""<!doctype html>
 <title>UrbanLens dashboard</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
-:root{--bg:#f6f7f9;--panel:#fff;--fg:#17191c;--mut:#667;--line:#e2e4e8;--acc:#0b6e4f;--chip:#eef0f3;--shadow:0 1px 3px rgba(0,0,0,.12)}
-@media (prefers-color-scheme:dark){:root{--bg:#111316;--panel:#1b1e23;--fg:#ecedef;--mut:#99a;--line:#30343b;--acc:#4cc38a;--chip:#272b32;--shadow:0 1px 3px rgba(0,0,0,.5)}}
+:root{--bg:#F3F5F2;--panel:#fff;--fg:#1B2B2C;--mut:#5d6b66;--line:#dfe4e0;--acc:#164E50;--chip:#E6ECE6;--shadow:0 1px 3px rgba(22,78,80,.15)}
 *{box-sizing:border-box}body{margin:0;font:14px/1.45 system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--fg)}
 header{padding:12px 14px 4px}h1{font-size:18px;margin:0}.sub{color:var(--mut);font-size:12px}
 .warn{background:#fff3cd;color:#664d03;padding:6px 10px;border-radius:8px;margin:8px 14px 0;font-size:12px}
 .kpis{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;scrollbar-width:none}.kpis::-webkit-scrollbar{display:none}
 .kpi{flex:0 0 118px;background:var(--panel);border-radius:12px;padding:9px 10px;box-shadow:var(--shadow);cursor:pointer;border:2px solid transparent}
-.kpi.on{border-color:var(--acc)}.kpi .l{font-size:11px;color:var(--mut);height:28px;line-height:1.25}.kpi .v{font-size:26px;font-weight:700}
+.kpi.on{border-color:#E87545}.kpi .l{font-size:11px;color:var(--mut);height:28px;line-height:1.25}.kpi .v{font-size:26px;font-weight:700}
 .bar{height:5px;background:var(--line);border-radius:3px}.bar i{display:block;height:5px;border-radius:3px}
 nav{display:flex;gap:6px;overflow-x:auto;padding:4px 14px 8px;position:sticky;top:0;background:var(--bg);z-index:900;scrollbar-width:none}
 nav button{border:0;background:var(--chip);color:var(--fg);padding:8px 14px;border-radius:20px;font:inherit;white-space:nowrap;cursor:pointer}
@@ -149,7 +148,7 @@ const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const SC = ['walk','safety','comfort','transit','green','heat'];
 const LBL = {overall:'Overall',walk:'Walkability',safety:'Junction safety',comfort:'Pedestrian comfort',transit:'Public transport',green:'Green access',heat:'Heat resilience',heat_vulnerability:'Climate vulnerability',need:'Social need',priority:'Priority index'};
 const SEQ = new Set(['heat_vulnerability','need','priority']);
-const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+const dark = false;
 let cur = 'overall', selected = null, eqKey = 'overall';
 
 // ---------- colour ramps ----------
